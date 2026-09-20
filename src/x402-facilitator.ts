@@ -2,6 +2,13 @@ import express, { Request, Response, NextFunction } from 'express';
 import { verifyTypedData, Hex } from 'viem';
 import { base, baseSepolia } from 'viem/chains';
 import dotenv from 'dotenv';
+import { batchWorker } from './x402-batch-worker';
+
+// Inside x402Facilitator middleware after verifyTypedData passes:
+batchWorker.enqueue(payload);
+
+// Start polling loop when server boots
+batchWorker.start(15000, 10); // Check every 15s, process up to 10 per batch
 
 dotenv.config();
 
