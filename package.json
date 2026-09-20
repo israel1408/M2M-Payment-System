@@ -5,7 +5,7 @@
   "main": "dist/x402-facilitator.js",
   "scripts": {
     "build": "next build",
-    "build:backend": "esbuild src/index.ts --bundle --platform=node --target=node20 --outfile=dist/x402-facilitator.js --external:express --external:dotenv --external:viem",
+    "build:backend": "esbuild src/x402-facilitator.ts --bundle --platform=node --target=node20 --outfile=dist/x402-facilitator.js --external:express --external:dotenv --external:viem",
     "start": "node dist/x402-facilitator.js",
     "start:frontend": "next start"
   },
