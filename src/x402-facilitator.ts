@@ -2,22 +2,7 @@ import express, { Request, Response, NextFunction } from 'express';
 import { verifyTypedData, Hex } from 'viem';
 import { base, baseSepolia } from 'viem/chains';
 import dotenv from 'dotenv';
-// Add this import at the top of src/x402-facilitator.ts
 import { batchWorker } from './x402-batch-worker';
-
-// Inside the x402Facilitator middleware function, right after verifyTypedData passes:
-// ---------------------------------------------------------------------------
-// Enqueue authorization for background on-chain settlement on Base L2
-batchWorker.enqueue(payload);
-// ---------------------------------------------------------------------------
-
-// At the bottom of src/x402-facilitator.ts, update the app.listen callback:
-app.listen(Number(PORT), '0.0.0.0', () => {
-  console.log(`[x402 Facilitator Engine] Server active on port ${PORT}`);
-  
-  // Start the background batch settlement worker (polls every 15s, max 10/batch)
-  batchWorker.start(15000, 10);
-});
 
 dotenv.config();
 
@@ -58,7 +43,7 @@ export interface PaymentRequirement {
   chainId: number;
   tokenAddress: `0x${string}`;
   payTo: `0x${string}`;
-  amount: string; // Price in atomic units (e.g., "1000" = $0.001 USDC)
+  amount: string;
   assetName: string;
   assetVersion: string;
   timeoutSeconds?: number;
@@ -74,20 +59,14 @@ export interface PaymentAuthorizationPayload {
   signature: Hex;
 }
 
-// Memory cache for nonces to prevent replay attacks on active node instances
 const processedNonces = new Set<string>();
 
 // ============================================================================
 // Core Facilitator & Verification Middleware
 // ============================================================================
 
-/**
- * Express middleware that enforces HTTP 402 Payment Required challenges
- * and validates off-chain EIP-3009 authorization signatures.
- */
 export function x402Facilitator(requirementConfig: Partial<PaymentRequirement> = {}) {
   return async (req: Request, res: Response, next: NextFunction): Promise<void> => {
-    // 1. Build payment requirement specification for this endpoint
     const chainId = requirementConfig.chainId || Number(process.env.CHAIN_ID) || 84532;
     const requirement: PaymentRequirement = {
       scheme: 'exact',
@@ -95,7 +74,7 @@ export function x402Facilitator(requirementConfig: Partial<PaymentRequirement> =
       chainId,
       tokenAddress: requirementConfig.tokenAddress || USDC_ADDRESSES[chainId],
       payTo: (requirementConfig.payTo || process.env.CLEARINGHOUSE_PAY_TO_ADDRESS || '0x0000000000000000000000000000000000000000') as `0x${string}`,
-      amount: requirementConfig.amount || '1000', // Default: 1,000 atomic units = $0.001 USDC
+      amount: requirementConfig.amount || '1000',
       assetName: requirementConfig.assetName || 'USD Coin',
       assetVersion: requirementConfig.assetVersion || '2',
       timeoutSeconds: requirementConfig.timeoutSeconds || 300,
@@ -103,7 +82,6 @@ export function x402Facilitator(requirementConfig: Partial<PaymentRequirement> =
 
     const clientAuthHeader = req.header(HEADERS.PAYMENT_SIGNATURE);
 
-    // 2. Challenge Phase: Return 402 if PAYMENT-SIGNATURE is missing
     if (!clientAuthHeader) {
       const encodedRequirement = Buffer.from(JSON.stringify(requirement)).toString('base64');
       res.status(402)
@@ -116,32 +94,27 @@ export function x402Facilitator(requirementConfig: Partial<PaymentRequirement> =
       return;
     }
 
-    // 3. Verification Phase: Decode and validate signature
     try {
       const payload: PaymentAuthorizationPayload = JSON.parse(
         Buffer.from(clientAuthHeader, 'base64').toString('utf-8')
       );
 
-      // Replay check
       if (processedNonces.has(payload.nonce)) {
         res.status(400).json({ error: 'Replay Attack Prevention', message: 'Nonce already processed.' });
         return;
       }
 
-      // Timestamp validity window check
       const now = Math.floor(Date.now() / 1000);
       if (now < payload.validAfter || now > payload.validBefore) {
         res.status(400).json({ error: 'Expired Authorization', message: 'Payment authorization timeframe invalid.' });
         return;
       }
 
-      // Amount verification
       if (BigInt(payload.value) < BigInt(requirement.amount)) {
         res.status(402).json({ error: 'Insufficient Payment', message: 'Provided authorization value is below required amount.' });
         return;
       }
 
-      // Cryptographic EIP-712 Signature Verification
       const isValidSignature = await verifyTypedData({
         address: payload.from,
         domain: {
@@ -168,15 +141,15 @@ export function x402Facilitator(requirementConfig: Partial<PaymentRequirement> =
         return;
       }
 
-      // Mark nonce as spent
       processedNonces.add(payload.nonce);
 
-      // 4. Calculate Facilitator Routing Fee Split
+      // Enqueue payload into batch worker for background Base L2 settlement
+      batchWorker.enqueue(payload);
+
       const grossAmount = BigInt(payload.value);
       const facilitatorFee = (grossAmount * BigInt(Math.floor(FACILITATOR_FEE_PERCENT * 10000))) / BigInt(10000);
       const sellerAmount = grossAmount - facilitatorFee;
 
-      // 5. Attach Settlement Proof Header
       const settlementReceipt = {
         status: 'cleared',
         transactionType: 'EIP-3009 Authorization',
@@ -190,7 +163,6 @@ export function x402Facilitator(requirementConfig: Partial<PaymentRequirement> =
       const encodedReceipt = Buffer.from(JSON.stringify(settlementReceipt)).toString('base64');
       res.setHeader(HEADERS.PAYMENT_RESPONSE, encodedReceipt);
 
-      // Attach settlement object to request for downstream API handlers
       (req as any).x402Settlement = settlementReceipt;
 
       next();
@@ -206,7 +178,6 @@ export function x402Facilitator(requirementConfig: Partial<PaymentRequirement> =
 const app = express();
 app.use(express.json());
 
-// Enable CORS for cross-origin agent requests and Vercel frontend dashboards
 app.use((req, res, next) => {
   res.header('Access-Control-Allow-Origin', '*');
   res.header('Access-Control-Allow-Headers', `Origin, X-Requested-With, Content-Type, Accept, ${HEADERS.PAYMENT_SIGNATURE}`);
@@ -219,7 +190,6 @@ app.use((req, res, next) => {
   next();
 });
 
-// Health check endpoint (Used by Render for automated zero-downtime health monitoring)
 app.get('/health', (req: Request, res: Response) => {
   res.status(200).json({
     status: 'online',
@@ -229,7 +199,6 @@ app.get('/health', (req: Request, res: Response) => {
   });
 });
 
-// Example Monetized AI Agent Endpoint ($0.001 USDC / call)
 app.post('/api/v1/inference', x402Facilitator({ amount: '1000' }), (req: Request, res: Response) => {
   const settlement = (req as any).x402Settlement;
 
@@ -244,8 +213,7 @@ app.post('/api/v1/inference', x402Facilitator({ amount: '1000' }), (req: Request
   });
 });
 
-// Start Express Listener on all interfaces (Required for Render)
 app.listen(Number(PORT), '0.0.0.0', () => {
   console.log(`[x402 Facilitator Engine] Server active on port ${PORT}`);
-  console.log(`[x402 Facilitator Engine] Health check live at http://0.0.0.0:${PORT}/health`);
+  batchWorker.start(15000, 10);
 });
