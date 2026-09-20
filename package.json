@@ -1,0 +1,21 @@
+{
+  "name": "x402-facilitator-engine",
+  "version": "1.0.0",
+  "description": "x402 Facilitator Node & Developer Middleware Engine",
+  "main": "dist/x402-facilitator.js",
+  "scripts": {
+    "build": "tsc",
+    "start": "node dist/x402-facilitator.js"
+  },
+  "dependencies": {
+    "dotenv": "^16.4.5",
+    "express": "^4.19.2",
+    "viem": "^2.18.0"
+  },
+  "devDependencies": {
+    "@types/express": "^4.17.21",
+    "@types/node": "^20.14.0",
+    "ts-node": "^10.9.2",
+    "typescript": "^5.4.5"
+  }
+}
