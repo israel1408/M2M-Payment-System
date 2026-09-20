@@ -2,13 +2,22 @@ import express, { Request, Response, NextFunction } from 'express';
 import { verifyTypedData, Hex } from 'viem';
 import { base, baseSepolia } from 'viem/chains';
 import dotenv from 'dotenv';
+// Add this import at the top of src/x402-facilitator.ts
 import { batchWorker } from './x402-batch-worker';
 
-// Inside x402Facilitator middleware after verifyTypedData passes:
+// Inside the x402Facilitator middleware function, right after verifyTypedData passes:
+// ---------------------------------------------------------------------------
+// Enqueue authorization for background on-chain settlement on Base L2
 batchWorker.enqueue(payload);
+// ---------------------------------------------------------------------------
 
-// Start polling loop when server boots
-batchWorker.start(15000, 10); // Check every 15s, process up to 10 per batch
+// At the bottom of src/x402-facilitator.ts, update the app.listen callback:
+app.listen(Number(PORT), '0.0.0.0', () => {
+  console.log(`[x402 Facilitator Engine] Server active on port ${PORT}`);
+  
+  // Start the background batch settlement worker (polls every 15s, max 10/batch)
+  batchWorker.start(15000, 10);
+});
 
 dotenv.config();
 
