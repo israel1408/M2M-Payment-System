@@ -5,21 +5,19 @@
   "main": "dist/x402-facilitator.js",
   "scripts": {
     "build": "next build",
-    "build:backend": "tsc -p tsconfig.backend.json",
+    "build:backend": "esbuild src/index.ts --bundle --platform=node --target=node20 --outfile=dist/x402-facilitator.js --external:express --external:dotenv --external:viem",
     "start": "node dist/x402-facilitator.js",
     "start:frontend": "next start"
   },
   "dependencies": {
     "@types/express": "^4.17.21",
     "@types/node": "^20.14.0",
-    "@types/react": "^18.3.3",
-    "@types/react-dom": "^18.3.0",
     "dotenv": "^16.4.5",
+    "esbuild": "^0.20.2",
     "express": "^4.19.2",
     "next": "^14.2.3",
     "react": "^18.3.1",
     "react-dom": "^18.3.1",
-    "ts-node": "^10.9.2",
     "typescript": "^5.4.5",
     "viem": "^2.18.0"
   }
