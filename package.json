@@ -4,9 +4,8 @@
   "description": "x402 Facilitator Node & Developer Middleware Engine",
   "main": "dist/x402-facilitator.js",
   "scripts": {
-    "build": "tsc && next build",
+    "build": "next build",
     "build:backend": "tsc",
-    "build:frontend": "next build",
     "start": "node dist/x402-facilitator.js",
     "start:frontend": "next start"
   },
